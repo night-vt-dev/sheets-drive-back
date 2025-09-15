@@ -1,8 +1,8 @@
 // CRUD for Firestore-stored intermediary data + optional write-back to Sheets
 
 const { db } = require('../services/firestore');
-const { normalizeRow } = require('../utils/normalize');
 const { sheetsClient } = require('../services/sheets');
+const { foldValues } = require('../utils/standardize');
 
 /**
  * GET /api/entries?sheetId=...&status=...&limit=100&after=42
@@ -15,8 +15,8 @@ exports.listEntries = async (req, res, next) => {
 
     let q = db.collection('entries').where('sheetId', '==', sheetId);
 
-    if (processed !== undefined) q = q.where('processed', '==', processed);
-    if (validated !== undefined) q = q.where('validated', '==', validated);
+    if (processed) q = q.where('processed', '==', processed);
+    if (validated) q = q.where('validated', '==', validated);
 
     // Order by rowIndex for stable pagination
     q = q.orderBy('rowIndex').limit(Math.min(Number(limit) || 100, 500));
@@ -52,7 +52,7 @@ exports.getEntry = async (req, res, next) => {
 
 /**
  * PATCH /api/entries/:id
- * Body can include: { normalized, status }
+ * Body can include: { processed, validated }
  */
 exports.patchEntry = async (req, res, next) => {
   try {
@@ -61,8 +61,8 @@ exports.patchEntry = async (req, res, next) => {
     if (!doc.exists) return res.sendStatus(404);
 
     const updates = {};
-    if (req.body.normalized) updates.normalized = req.body.normalized;
-    if (req.body.status) updates.status = req.body.status;
+    if (req.body.processed) updates.row.processed = req.body.processed;
+    if (req.body.validated) updates.row.processed = req.body.validated;
     updates.updatedAt = Date.now();
 
     await ref.set(updates, { merge: true });
@@ -86,18 +86,9 @@ exports.writeBackToSheet = async (req, res, next) => {
     if (!doc.exists) return res.sendStatus(404);
     const entry = doc.data();
 
-    const range =
-      req.body.range ||
-      `${entry.sheetName || 'Sheet1'}!A${entry.rowIndex}:C${entry.rowIndex}`;
+    const range =`${entry.sheetName}!A${entry.rowIndex}:L${entry.rowIndex}`;
 
-    // If client sent explicit values, use them; otherwise build from normalized
-    const values = Array.isArray(req.body.values)
-      ? req.body.values
-      : [[
-          String(entry.normalized?.name ?? ''),
-          Number(entry.normalized?.qty ?? 0),
-          Number(entry.normalized?.price ?? 0),
-        ]];
+    const values = foldValues(entry.row);
 
     const sheets = sheetsClient();
     const resp = await sheets.spreadsheets.values.update({
@@ -108,7 +99,7 @@ exports.writeBackToSheet = async (req, res, next) => {
     });
 
     // Mark as processed/updated in Firestore
-    await ref.set({ status: 'updated', updatedAt: Date.now() }, { merge: true });
+    await ref.set({ updatedAt: Date.now() }, { merge: true });
 
     res.json({ ok: true, updatedRange: range, result: resp.data });
   } catch (err) {
@@ -134,14 +125,12 @@ exports.ingestManual = async (req, res, next) => {
       batch.set(
         db.collection('entries').doc(id),
         {
-          sheetId,
-          sheetName,
-          rowIndex,
-          raw: r,
-          normalized: normalizeRow(r),
-          status: 'new',
+          sheetId: spreadsheetId,
+          sheetName: sheetName || 'Sheet1',
+          rowIndex: rowIndex,
           createdAt: now,
           updatedAt: now,
+          row: namedValues
         },
         { merge: true }
       );

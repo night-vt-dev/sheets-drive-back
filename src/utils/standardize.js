@@ -6,3 +6,11 @@ exports.standardize = (row = {}) => {
     });
     return standard;
 }
+
+exports.foldValues = (row = {}) => {
+    let result = [];
+    for(col in row) {
+        result.push([col]);
+    }
+    return result;
+}
