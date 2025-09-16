@@ -9,7 +9,7 @@ const errorHandler = require('./middleware/error');
 
 const app = express();
 app.set('trust proxy', true);                 // recommended on Cloud Run
-app.use(cors({ origin: ['http://localhost:5173', 'https://your-frontend.example'] }));
+app.use(cors({ origin: ['http://localhost:5173'] }));
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('combined'));
 
