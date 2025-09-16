@@ -61,8 +61,11 @@ exports.patchEntry = async (req, res, next) => {
     if (!doc.exists) return res.sendStatus(404);
 
     const updates = {};
-    if (req.body.processed) updates.row.processed = req.body.processed;
-    if (req.body.validated) updates.row.processed = req.body.validated;
+    if(req.body){
+        for (field in body){
+            updates.row[field] = req.body[field];
+        }
+    }
     updates.updatedAt = Date.now();
 
     await ref.set(updates, { merge: true });
@@ -72,6 +75,10 @@ exports.patchEntry = async (req, res, next) => {
     next(err);
   }
 };
+
+
+    //TODO: replace to use updateColumnsByHeaderName and make endpoints for specific validations, rrefusals, and edits
+
 
 /**
  * POST /api/entries/:id/sheets
@@ -90,6 +97,7 @@ exports.writeBackToSheet = async (req, res, next) => {
 
     const values = foldValues(entry.row);
 
+    //TODO: replace to use updateColumnsByHeaderName
     const sheets = sheetsClient();
     const resp = await sheets.spreadsheets.values.update({
       spreadsheetId: entry.sheetId,
