@@ -1,8 +1,7 @@
 // CRUD for Firestore-stored intermediary data + optional write-back to Sheets
 
 const { db } = require('../services/firestore');
-const { sheetsClient } = require('../services/sheets');
-const { foldValues } = require('../utils/standardize');
+const { updateColumnsByHeaderName } = require('../services/headers');
 
 /**
  * GET /api/entries?sheetId=...&status=...&limit=100&after=42
@@ -51,8 +50,70 @@ exports.getEntry = async (req, res, next) => {
 };
 
 /**
+ * POST /api/entries/:id/validate
+ * @param {*} req contains
+ *      params: id
+ *      body: -
+ * @param {*} res 
+ * @param {*} next 
+ */
+exports.validateEntry = async (req, res, next) => {
+    try {
+        const ref = db.collection('entries').doc(req.params.id);
+        const doc = await ref.get();
+
+        if (!doc.exists) return res.sendStatus(404);
+        const updates = {};
+
+        updates.row.process = 'TRUE';
+        updates.row.validated = 'TRUE';
+
+        await ref.set(updates, {merge: true});
+
+        const fresh = await ref.get();
+
+        const resp = await writeBackToSheet(fresh.id, fresh.sheetId, fresh.sheetName, fresh.row);
+
+        res.json({entry: {id: fresh.id, ...fresh.data()}, sheetData: {...resp}});
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * POST /api/entries/:id/refuse
+ * @param {*} req contains
+ *      params: id
+ *      body: -
+ * @param {*} res 
+ * @param {*} next 
+ */
+exports.refuseEntry = async (req, res, next) => {
+    try {
+        const ref = db.collection('entries').doc(req.params.id);
+        const doc = await ref.get();
+
+        if (!doc.exists) return res.sendStatus(404);
+        const updates = {};
+
+        updates.row.process = 'TRUE';
+        updates.row.validated = 'FALSE';
+
+        await ref.set(updates, {merge: true});
+
+        const fresh = await ref.get();
+
+        const resp = await writeBackToSheet(fresh.id, fresh.sheetId, fresh.sheetName, fresh.row);
+
+        res.json({entry: {id: fresh.id, ...fresh.data()}, sheetData: {...resp}});
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
  * PATCH /api/entries/:id
- * Body can include: { processed, validated }
+ * body can include any fields
  */
 exports.patchEntry = async (req, res, next) => {
   try {
@@ -70,50 +131,25 @@ exports.patchEntry = async (req, res, next) => {
 
     await ref.set(updates, { merge: true });
     const fresh = await ref.get();
-    res.json({ id: fresh.id, ...fresh.data() });
+
+    const resp = await writeBackToSheet(fresh.id, fresh.sheetId, fresh.sheetName, fresh.row);
+
+    res.json({entry: {id: fresh.id, ...fresh.data()}, sheetData: {...resp}});
   } catch (err) {
     next(err);
   }
 };
 
-
-    //TODO: replace to use updateColumnsByHeaderName and make endpoints for specific validations, rrefusals, and edits
-
-
-/**
- * POST /api/entries/:id/sheets
- * Write back this entry to the spreadsheet.
- * Body: { range?: "Sheet1!A42:C42", values?: string[][] }
- * If values not provided, we'll map entry.normalized → single row values.
- */
-exports.writeBackToSheet = async (req, res, next) => {
-  try {
-    const ref = db.collection('entries').doc(req.params.id);
-    const doc = await ref.get();
-    if (!doc.exists) return res.sendStatus(404);
-    const entry = doc.data();
-
-    const range =`${entry.sheetName}!A${entry.rowIndex}:L${entry.rowIndex}`;
-
-    const values = foldValues(entry.row);
-
-    //TODO: replace to use updateColumnsByHeaderName
-    const sheets = sheetsClient();
-    const resp = await sheets.spreadsheets.values.update({
-      spreadsheetId: entry.sheetId,
-      range,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values },
+writeBackToSheet = async (id, sheetId, sheetName, row) => {
+    const resp = await updateColumnsByHeaderName({
+        spreadsheetId: sheetId,
+        sheetName: sheetName,
+        locator: id,
+        updates: row
     });
 
-    // Mark as processed/updated in Firestore
-    await ref.set({ updatedAt: Date.now() }, { merge: true });
-
-    res.json({ ok: true, updatedRange: range, result: resp.data });
-  } catch (err) {
-    next(err);
-  }
-};
+    return {ok: true, result: resp.data};
+}
 
 /**
  * (Optional) POST /api/entries/ingest (manual test)
