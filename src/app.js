@@ -18,7 +18,7 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/sheets', webhookRoutes);            // webhook endpoints (shared secret)
 app.use('/api', auth, entriesRoutes);         // protected API for GUI
-app.use('/params', auth, express.json(), paramsRoutes);         // protected API for GUI
+app.use('/api', auth, express.json(), paramsRoutes);         // protected API for GUI
 
 // in app.js (after you import auth)
 app.get('/api/me', auth, (req, res) => {
