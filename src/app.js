@@ -18,5 +18,13 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/sheets', webhookRoutes);            // webhook endpoints (shared secret)
 app.use('/api', auth, entriesRoutes);         // protected API for GUI
 
+// in app.js (after you import auth)
+app.get('/api/me', auth, (req, res) => {
+  const { email, name, sub } = req.user || {};
+  res.json({ email, name, sub });
+});
+
+
+
 app.use(errorHandler);
 module.exports = app;
