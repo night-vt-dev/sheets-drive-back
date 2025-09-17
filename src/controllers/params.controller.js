@@ -1,0 +1,89 @@
+const { db } = require("../services/firestore");
+
+
+/**
+ * returns parameters for the current user
+ * @param {*} req 
+ * @param {*} res 
+ * @param {*} next 
+ */
+exports.getParams = async (req, res, next) => {
+    try {
+        const uid = req.user.sub;
+        const params = db.collection('users').doc(uid);
+        const snap = await params.get();
+
+        if (!snap.exists) {
+            return res.json({
+                userId: uid,
+                email: req.user.email,
+                username: '',
+                defaultSpreadsheetId: '',
+            });
+        }
+
+        const d = snap.data();
+
+        return res.json({
+            userId: uid,
+            email: req.user.email, 
+            username: d.username || '',
+            defaultSpreadsheetId: d.defaultSpreadsheetId || '',
+        });ß
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.updatePrefs = async (req, res, next) => {
+  try {
+    const uid = req.user.sub;
+    const ref = db.collection('users').doc(uid);
+
+    const updates = {};
+    if ('username' in req.body) {
+      const u = sanitizeUsername(req.body.username);
+      if (req.body.username && !u) return res.status(400).json({ error: 'Invalid username' });
+      updates.username = u || '';
+    }
+    if ('defaultSpreadsheetId' in req.body) {
+      const s = sanitizeSheetId(req.body.defaultSpreadsheetId);
+      if (req.body.defaultSpreadsheetId && !s) return res.status(400).json({ error: 'Invalid spreadsheet ID' });
+      updates.defaultSpreadsheetId = s || '';
+    }
+
+    if (!Object.keys(updates).length) return res.status(400).json({ error: 'No updatable fields' });
+
+    const now = Date.now();
+    await ref.set({ ...updates, updatedAt: now, createdAt: now }, { merge: true });
+    const fresh = await ref.get();
+    const d = fresh.data() || {};
+    res.json({
+      userId: uid,
+      email: req.user.email,
+      username: d.username || '',
+      defaultSpreadsheetId: d.defaultSpreadsheetId || '',
+    });
+  } catch (e) { next(e); }
+};
+
+exports.getSheets = async (req, res, next) => {
+    try {
+        const ref = db.collection('entries');
+
+        const entries = await ref.listDocuments();
+
+        const resp = [];
+        for (entry in entries){
+            if(!resp.includes({sheetId: entry.data().sheetId, sheetName: entry.data().sheetName})){
+                resp.push({sheetId: entry.data().sheetId, sheetName: entry.data().sheetName});
+            }
+        }
+
+        res.json({
+            sheets: resp,
+        });
+    } catch (error) {
+        next(error);
+    }
+}

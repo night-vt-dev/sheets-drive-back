@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const auth = require('./middleware/auth');
 const webhookRoutes = require('./routes/webhook.routes');
 const entriesRoutes = require('./routes/entries.routes');
+const paramsRoutes = require('./routes/params.routes');
 const errorHandler = require('./middleware/error');
 
 const app = express();
@@ -17,6 +18,7 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/sheets', webhookRoutes);            // webhook endpoints (shared secret)
 app.use('/api', auth, entriesRoutes);         // protected API for GUI
+app.use('/params', auth, express.json(), paramsRoutes);         // protected API for GUI
 
 // in app.js (after you import auth)
 app.get('/api/me', auth, (req, res) => {
