@@ -1,4 +1,21 @@
 const { db } = require("../services/firestore");
+const logger = require("../utils/logger");
+
+
+function sanitizeUsername(x) {
+    if (typeof x !== 'string') return null;
+    const trimmed = x.trim();
+    if (!/^[a-zA-Z0-9._-]{3,32}$/.test(trimmed)) return null; // adjust rules as you like
+    return trimmed;
+}
+
+function sanitizeSheetId(x) {
+    if (typeof x !== 'string') return null;
+    const trimmed = x.trim();
+    // Basic sanity: Google Sheet IDs are base64ish-ish; don't over-validate
+    if (!/^[A-Za-z0-9-_]{20,}$/.test(trimmed)) return null;
+    return trimmed;
+}
 
 
 /**
@@ -75,7 +92,9 @@ exports.getSheets = async (req, res, next) => {
 
         const resp = [];
         entries.forEach(entry => {
-            if (!resp.includes({ sheetId: entry.data().sheetId, sheetName: entry.data().sheetName })) {
+            const e = entry.data();
+            logger.info(e);
+            if (!resp.includes({ sheetId: e.sheetId, sheetName: e.sheetName })) {
                 resp.push({ sheetId: entry.data().sheetId, sheetName: entry.data().sheetName });
             }
         });
