@@ -14,8 +14,8 @@ exports.listEntries = async (req, res, next) => {
 
     let q = db.collection('entries').where('sheetId', '==', sheetId);
 
-    if (processed) q = q.where('processed', '==', processed);
-    if (validated) q = q.where('validated', '==', validated);
+    if (processed) q = q.where('row.processed', '==', processed);
+    if (validated) q = q.where('row.validated', '==', validated);
 
     // Order by rowIndex for stable pagination
     q = q.orderBy('rowIndex').limit(Math.min(Number(limit) || 100, 500));
