@@ -1,3 +1,4 @@
+const { sheets } = require("googleapis/build/src/apis/sheets");
 const { db } = require("../services/firestore");
 const logger = require("../utils/logger");
 
@@ -86,23 +87,29 @@ exports.updatePrefs = async (req, res, next) => {
 
 exports.getSheets = async (req, res, next) => {
     try {
-        const ref = db.collection('entries');
+        const ref = db.collection('entries').select('sheetId', 'sheetName').orderBy('sheetId').orderBy('sheetName');
 
-        const entries = await ref.get();
+        const snap = await ref.get();
 
         const resp = [];
-        entries.forEach(entry => {
-            const e = entry.data();
-            logger.info(e);
-            if (!resp.includes({ sheetId: e.sheetId, sheetName: e.sheetName })) {
-                resp.push({ sheetId: entry.data().sheetId, sheetName: entry.data().sheetName });
-            }
-        });
+
+        for(const doc of snap.docs){
+            const sheet = {sheetId: doc.data().sheetId, sheetName: doc.data().sheetName};
+            resp.push(sheet);
+        }
 
         res.json({
-            sheets: resp,
+            sheets: onlyUnique(resp, 'sheetId'),
         });
     } catch (error) {
         next(error);
     }
+}
+
+function onlyUnique(arr, prop) {
+  return arr.filter((item, index) => {
+
+    return arr.findIndex(obj => obj[prop] === item[prop]) === index;
+
+  });
 }
