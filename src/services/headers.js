@@ -39,6 +39,8 @@ async function findRowByFormResponseId({ spreadsheetId, sheetName, formResponseI
 async function updateColumnsByHeaderName({spreadsheetId, sheetName, locator, updates}) {
     const sheets = sheetsClient();
     let row;
+    sheetName = safeSheetName(sheetName)
+    console.log("headers.js:",locator, updates, spreadsheetId, sheetName)
     if(locator?.rowNumber){
         row = Number(locator.rowNumber);
     } else if (locator?.formResponseId) {
@@ -55,10 +57,66 @@ async function updateColumnsByHeaderName({spreadsheetId, sheetName, locator, upd
         const a1 = `${sheetName}!${colToA1(col)}${row}`;
         data.push({range: a1, values: [[value]]});
     }
+    data.forEach(d => console.log(d.values));
     if (!data.length) return { row, updated: 0};
-    const resp = await sheets.spreadhseets.values.batchUpdate({spreadsheetId, requestBody: { valueInputOption: 'USER_ENTERED', data},});
+    console.log(data);
+    assertBatchData(data);
+    const respData = batchWriteValues({spreadsheetId, data});
+    //const resp = await sheets.spreadhseets.values.batchUpdate({spreadsheetId, requestBody: { valueInputOption: 'USER_ENTERED', data},});
 
-    return { row, updated: data.length, result: resp.data };
+    return { row, updated: data.length, result: respData };
 }
 
+const util = require('node:util');
+
+function assertValuesBatchData(data) {
+  if (!Array.isArray(data) || data.length === 0)
+    throw new Error('requestBody.data must be a non-empty array');
+  data.forEach((d, i) => {
+    if (!d || typeof d !== 'object') throw new Error(`data[${i}] is not an object`);
+    if (typeof d.range !== 'string' || !d.range.includes('!'))
+      throw new Error(`data[${i}].range must include sheet name, got: ${d && d.range}`);
+    if (!Array.isArray(d.values) || !Array.isArray(d.values[0]))
+      throw new Error(`data[${i}].values must be 2D array, got: ${util.inspect(d && d.values, {depth:5})}`);
+  });
+}
+
+
+
+async function batchWriteValues({ spreadsheetId, data, valueInputOption = 'RAW' }) {
+  if (!spreadsheetId) throw new Error('spreadsheetId is required');
+  assertValuesBatchData(data.filter(Boolean)); // filter out holes just in case
+
+  const sheets = sheetsClient();
+  const req = {
+    spreadsheetId,
+    requestBody: { valueInputOption, data },
+  };
+
+  // Optional: print first item fully (no [Array] elision)
+  // console.log('batchUpdate first item:', util.inspect(data[0], { depth: 10 }));
+
+  const resp = await sheets.spreadsheets.values.batchUpdate(req);
+  return resp.data;
+}
+
+
+
+
 module.exports = { updateColumnsByHeaderName };
+
+function assertBatchData(data) {
+  if (!Array.isArray(data)) throw new Error('data must be an array');
+  data.forEach((d, i) => {
+    if (!d || typeof d !== 'object') throw new Error(`data[${i}] not an object`);
+    if (typeof d.range !== 'string') throw new Error(`data[${i}].range missing`);
+    if (!Array.isArray(d.values) || !Array.isArray(d.values[0])) {
+      throw new Error(`data[${i}].values must be 2D array`);
+    }
+  });
+}
+
+function safeSheetName(name) {
+  // wrap in single quotes and escape any single quotes inside
+  return `'${String(name).replace(/'/g, "''")}'`;
+}
