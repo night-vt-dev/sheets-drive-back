@@ -127,10 +127,12 @@ exports.patchEntry = async (req, res, next) => {
         const doc = await ref.get();
         if (!doc.exists) return res.sendStatus(404);
 
-        const updates = {};
+        console.log(req.body);
+
+        const updates = {row:{},};
         if (req.body) {
-            for (field in body) {
-                updates.row[field] = req.body[field];
+            for (field in req.body.updates) {
+                updates.row[field] = req.body.updates[field];
             }
         }
         updates.updatedAt = Date.now();
@@ -140,7 +142,7 @@ exports.patchEntry = async (req, res, next) => {
 
         const resp = await writeBackToSheet(req.params.id, fresh.sheetId, fresh.sheetName, fresh.row);
 
-        res.json({ entry: { id: fresh.id, ...fresh.data() }, sheetData: { ...resp } });
+        res.json({ entry: { id: fresh.id, ...fresh }, sheetData: { ...resp } });
     } catch (err) {
         next(err);
     }
